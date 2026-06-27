@@ -49,10 +49,14 @@ function mountApiRoutes(app, { redisClient, io, adminPass }) {
     userRoom: KEYS.userRoom,
   });
 
-  app.use('/api/auth', createApiAuthRouter({ redisClient }));
-
   const apiRouter = express.Router();
   apiRouter.use(requireSocketSession);
+
+  apiRouter.use(
+    createApiAuthRouter({
+      redisClient,
+    })
+  );
 
   apiRouter.use(
     createApiMessagesRouter({
