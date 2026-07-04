@@ -1,6 +1,5 @@
 import { SERVER_URL } from './config.js';
 import { state } from './state.js';
-import { safeRemoveItem } from './storage.js';
 import { elements } from './dom.js';
 import { setConnectionState, scrollBottom, focusInput, validateRoomId } from './utils.js';
 import { showServerToast, showToast } from './toast.js';
@@ -10,22 +9,12 @@ import { obtainToken } from './api.js';
 let tokenRefreshPromise = null;
 let authRetryInFlight = false;
 
-function applySocketAuth() {
-  if (!state.socket) return;
-
-  if (state.myToken) {
-    state.socket.auth = { token: state.myToken };
-  } else {
-    state.socket.auth = undefined;
-  }
-}
-
 async function refreshTokenOnce() {
   if (tokenRefreshPromise) return tokenRefreshPromise;
 
   tokenRefreshPromise = (async () => {
     await obtainToken();
-    return Boolean(state.myToken);
+    return true;
   })();
 
   try {
@@ -46,8 +35,6 @@ async function reconnectAfterAuthFailure() {
       showToast('認証に失敗しました。再接続できませんでした。');
       return;
     }
-
-    applySocketAuth();
 
     try {
       if (state.socket.connected) {
@@ -86,9 +73,8 @@ export function createSocket() {
   state.socket = io(SERVER_URL, {
     transports: ['websocket'],
     autoConnect: false,
+    withCredentials: true,
   });
-
-  applySocketAuth();
 
   state.socket.on('connect', () => {
     authRetryInFlight = false;
@@ -101,7 +87,6 @@ export function createSocket() {
   });
 
   state.socket.io.on('reconnect_attempt', () => {
-    applySocketAuth();
     setConnectionState('connecting');
   });
 
@@ -139,9 +124,6 @@ export function createSocket() {
     const msg = String(err?.message || '');
 
     if (/TOKEN_EXPIRED/i.test(msg) || /NO_TOKEN/i.test(msg)) {
-      state.myToken = null;
-      safeRemoveItem('chatToken');
-
       await reconnectAfterAuthFailure();
       return;
     }
@@ -165,20 +147,9 @@ export function createSocket() {
 }
 
 export async function startConnection() {
-  if (!state.myToken) {
-    try {
-      await refreshTokenOnce();
-    } catch (e) {
-      showToast('トークン取得に失敗しました');
-      throw e;
-    }
-  }
-
   if (!state.socket) {
     createSocket();
   }
-
-  applySocketAuth();
 
   if (!state.socket.connected) {
     setConnectionState('connecting');

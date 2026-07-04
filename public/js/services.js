@@ -234,12 +234,6 @@ export async function deleteAllMessages() {
 
 export async function getAdminStatus() {
   try {
-    if (!state.myToken) {
-      state.isAdmin = false;
-      refreshAdminModalUI();
-      return false;
-    }
-
     const res = await fetchWithAuth(`${SERVER_URL}/api/admin/status`, {
       method: 'GET',
       cache: 'no-store',

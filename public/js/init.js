@@ -95,14 +95,12 @@ export function setupEventListeners() {
 
 export async function initialize() {
   try {
-    if (!state.myToken) {
-      try {
-        await obtainToken();
-      } catch (err) {
-        showToast(err?.message === 'authCooldown' ? '認証の再試行を少し待ってください' : (err?.message || '認証に失敗しました'));
-        openProfileModal();
-        return;
-      }
+    try {
+      await obtainToken();
+    } catch (err) {
+      showToast(err?.message === 'authCooldown' ? '認証の再試行を少し待ってください' : (err?.message || '認証に失敗しました'));
+      openProfileModal();
+      return;
     }
 
     try {
@@ -125,7 +123,7 @@ export async function initialize() {
       }
     }
 
-    if (state.pendingMessage && state.myToken) {
+    if (state.pendingMessage) {
       const pending = state.pendingMessage;
       state.pendingMessage = null;
 

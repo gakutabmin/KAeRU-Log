@@ -4,11 +4,9 @@ const crypto = require('crypto');
 const express = require('express');
 
 const KEYS = require('../lib/redisKeys');
-const { checkRateLimitMs } = require('../utils/rateLimitUtils');
 const { requireRequestAuthContext } = require('../lib/requestAuth');
 const { isValidRoomId } = require('../lib/validation');
-
-const ADMIN_RATE_LIMIT_MS = 30_000;
+const createAdminLoginDefense = require('../lib/adminLoginDefense');
 
 function constantTimeEquals(left, right) {
   const a = Buffer.from(String(left));
@@ -19,8 +17,18 @@ function constantTimeEquals(left, right) {
   return crypto.timingSafeEqual(a, b);
 }
 
+function buildAdminScopes(clientId, ip) {
+  return [clientId, ip].filter((value) => typeof value === 'string' && value.trim());
+}
+
 function createApiAdminRouter({ redisClient, io, emitUserToast, emitRoomToast, adminPass }) {
   const router = express.Router();
+  const loginDefense = createAdminLoginDefense(redisClient, KEYS, {
+    threshold: 5,
+    failureWindowMs: 15 * 60 * 1000,
+    lockoutMs: 10 * 60 * 1000,
+    maxLockoutMs: 60 * 60 * 1000,
+  });
 
   async function readAdminOwner(token) {
     return redisClient.get(KEYS.adminSession(token));
@@ -53,17 +61,34 @@ function createApiAdminRouter({ redisClient, io, emitUserToast, emitRoomToast, a
       }
 
       const { clientId, token } = context;
+      const ip = typeof req.ip === 'string' && req.ip ? req.ip : '0.0.0.0';
+      const scopes = buildAdminScopes(clientId, ip);
       const password = typeof req.body?.password === 'string' ? req.body.password : '';
 
-      if (!(await checkRateLimitMs(redisClient, KEYS.rateAdminLogin(clientId), ADMIN_RATE_LIMIT_MS))) {
-        emitUserToast(clientId, 'ログイン操作には30秒以上間隔をあけてください', { tone: 'warning' });
-        return res.sendStatus(429);
+      for (const scope of scopes) {
+        const remainingMs = await loginDefense.getLockRemainingMs(scope);
+        if (remainingMs > 0) {
+          emitUserToast(clientId, '管理者ログインは一時的に制限されています', { tone: 'warning' });
+          return res.sendStatus(429);
+        }
       }
 
       if (!constantTimeEquals(password, adminPass)) {
+        const results = await Promise.all(scopes.map((scope) => loginDefense.recordFailure(scope)));
+        const locked = results.some((result) => result.locked);
+
+        if (locked) {
+          emitUserToast(clientId, '管理者ログイン試行が多すぎます。しばらくしてから再試行してください', {
+            tone: 'warning',
+          });
+          return res.sendStatus(429);
+        }
+
         emitUserToast(clientId, '管理者パスワードが正しくありません', { tone: 'error' });
         return res.sendStatus(403);
       }
+
+      await Promise.all(scopes.map((scope) => loginDefense.reset(scope)));
 
       const tokenTtlSec = await redisClient.ttl(KEYS.token(token));
       if (!Number.isFinite(tokenTtlSec) || tokenTtlSec <= 0) {
@@ -132,16 +157,10 @@ function createApiAdminRouter({ redisClient, io, emitUserToast, emitRoomToast, a
         return;
       }
 
-      const { clientId } = context;
       const roomId = typeof req.params.roomId === 'string' ? req.params.roomId.trim() : '';
 
       if (!isValidRoomId(roomId)) {
         return res.sendStatus(400);
-      }
-
-      if (!(await checkRateLimitMs(redisClient, KEYS.rateClear(clientId), ADMIN_RATE_LIMIT_MS))) {
-        emitUserToast(clientId, '削除操作は30秒以上間隔をあけてください', { tone: 'warning' });
-        return res.sendStatus(429);
       }
 
       const adminOwnerClientId = await requireAdminSession(context, res, '管理者ログインが必要です');

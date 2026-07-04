@@ -12,6 +12,7 @@ const SocketSessionManager = require('./lib/socketSessionManager');
 const { countRoomMembers } = require('./lib/socketPresence');
 const { isValidRoomId } = require('./lib/validation');
 const { normalizeOrigin } = require('./lib/origin');
+const { getAuthTokenFromCookieHeader } = require('./lib/authCookie');
 
 function safeEmitSocket(socket, event, payload) {
   if (!socket || typeof socket.emit !== 'function') {
@@ -74,9 +75,8 @@ function createSocketServer({ httpServer, redisClient, frontendUrl }) {
     socket.data.authenticated = false;
     socket.data.cleanup = async () => {};
 
-    const token = typeof socket.handshake?.auth?.token === 'string'
-      ? socket.handshake.auth.token.trim()
-      : '';
+    const cookieHeader = socket.handshake?.headers?.cookie;
+    const token = getAuthTokenFromCookieHeader(Array.isArray(cookieHeader) ? cookieHeader[0] : cookieHeader);
 
     if (!token) {
       return next(createSocketError('NO_TOKEN'));

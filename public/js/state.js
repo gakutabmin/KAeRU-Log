@@ -5,7 +5,6 @@ export const state = {
   messages: [],
 
   myName: safeGetItem('chat_username', ''),
-  myToken: safeGetItem('chatToken', ''),
 
   roomId: null,
 

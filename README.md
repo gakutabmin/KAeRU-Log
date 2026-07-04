@@ -1,15 +1,16 @@
 # KAeRU Log
 
-Redis をデータ層に使う、Express + Socket.IO ベースのリアルタイムチャットサーバーです。HTTP API と WebSocket はどちらも認証付きで動作し、メッセージ履歴、ユーザー名、トークン、管理者セッション、レート制限状態を Redis に保存します。
+Redis をデータ層に使う、Express + Socket.IO ベースのリアルタイムチャットサーバーです。HTTP API と WebSocket は同じセッションを使って認証され、メッセージ履歴、ユーザー名、トークン、管理者セッション、レート制限状態を Redis に保存します。
 
 ## 主な機能
 
 - Socket.IO によるルーム単位のリアルタイム配信
-- HTTP API と WebSocket のトークン認証
+- HttpOnly Cookie を使ったセッション認証
 - Redis へのメッセージ履歴保存
 - ルームごとのメッセージ上限管理
 - ユーザー名変更のレート制限
 - 管理者ログイン、ルームクリア、状態確認
+- 管理者ログイン試行のロックアウト
 - スパム判定と送信制限
 - セキュリティヘッダーと CORS 制御
 - 静的フロントエンドの配信
@@ -51,7 +52,7 @@ npm start
 
 ## データと制約
 
-- 認証トークンの有効期間は 24 時間です。
+- 認証セッションの有効期間は 24 時間です。
 - 認証時にユーザー名を省略すると `guest-xxxxxx` 形式が割り当てられます。
 - ユーザー名は 1〜20 文字です。
 - メッセージは 1〜300 文字です。
@@ -62,11 +63,11 @@ npm start
 
 ## HTTP API
 
-認証が必要な API は `Authorization: Bearer <token>` を要求します。`token` は `POST /api/auth` で発行します。
+認証が必要な API はブラウザの Cookie セッションを使います。`POST /api/auth` でセッションを確立します。
 
 ### `POST /api/auth`
 
-認証トークンを発行します。
+認証セッションを確立します。既存の有効なセッションがあれば、それを使います。
 
 リクエスト例:
 
@@ -74,12 +75,7 @@ npm start
 { "username": "taro" }
 ```
 
-`username` を省略すると、自動生成された guest 名が使われます。  
-レスポンス例:
-
-```json
-{ "token": "…", "username": "taro" }
-```
+`username` を省略すると、自動生成された guest 名が使われます。
 
 ### `GET /api/messages/:roomId`
 
@@ -113,8 +109,9 @@ npm start
 - `POST /api/admin/logout`
 - `POST /api/admin/clear/:roomId`
 
-`/login` は認証済みトークンと `ADMIN_PASS` を使って管理者セッションを作成します。  
-`/status` は現在のトークンが管理者セッションかどうかを返します。  
+`/login` は認証済みセッションと `ADMIN_PASS` を使って管理者セッションを作成します。  
+失敗が続くと一時的にロックされます。  
+`/status` は現在のセッションが管理者セッションかどうかを返します。  
 `/logout` は管理者セッションを削除します。  
 `/clear/:roomId` は指定ルームのメッセージ履歴を削除し、`clearMessages` を配信します。
 
@@ -122,8 +119,8 @@ npm start
 
 ### 接続認証
 
-接続時に `handshake.auth.token` で認証トークンを渡します。  
-トークンがない、または無効な場合は接続できません。
+接続時は Cookie セッションを使って認証します。  
+クライアントは `withCredentials` を有効にして接続します。
 
 ### イベント
 
@@ -151,7 +148,7 @@ npm start
 - `redis.js` — Redis 接続
 - `routes/` — HTTP API
 - `services/` — スパム判定などのサービス
-- `lib/` — Redis キー、メッセージ処理、バリデーション
+- `lib/` — Redis キー、Cookie、メッセージ処理、バリデーション
 - `utils/` — 補助ユーティリティ
 - `public/` — 静的ファイル
 - `lua/` — Redis Lua スクリプト

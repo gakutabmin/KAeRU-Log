@@ -11,7 +11,7 @@ const createApiUsernameRouter = require('./routes/apiUsername');
 const createApiAdminRouter = require('./routes/apiAdmin');
 const KEYS = require('./lib/redisKeys');
 const { validateAuthToken } = require('./auth');
-const { extractBearerToken, sendAuthError } = require('./lib/requestAuth');
+const { getAuthTokenFromRequest, sendAuthError } = require('./lib/requestAuth');
 const { isTrustProxyEnabled } = require('./utils/trustProxy');
 const { createToastEmitters } = require('./lib/toast');
 
@@ -20,7 +20,7 @@ const INDEX_FILE = path.join(PUBLIC_DIR, 'index.html');
 
 function createRequireSocketSession(redisClient) {
   return async function requireSocketSession(req, res, next) {
-    const token = extractBearerToken(req.headers.authorization);
+    const token = getAuthTokenFromRequest(req);
 
     if (!token) {
       return sendAuthError(res, 401);
@@ -43,7 +43,7 @@ function createRequireSocketSession(redisClient) {
   };
 }
 
-function mountApiRoutes(app, { redisClient, io, adminPass }) {
+function mountApiRoutes(app, { redisClient, io, adminPass, frontendUrl }) {
   const requireSocketSession = createRequireSocketSession(redisClient);
   const { emitUserToast, emitRoomToast } = createToastEmitters(io, {
     userRoom: KEYS.userRoom,
@@ -53,6 +53,7 @@ function mountApiRoutes(app, { redisClient, io, adminPass }) {
     '/api',
     createApiAuthRouter({
       redisClient,
+      frontendUrl,
     })
   );
 
@@ -122,7 +123,7 @@ function createApp({ redisClient, io, adminPass, frontendUrl }) {
   app.use(createCorsMiddleware(frontendUrl));
   app.use(securityHeaders({ frontendUrl }));
 
-  mountApiRoutes(app, { redisClient, io, adminPass });
+  mountApiRoutes(app, { redisClient, io, adminPass, frontendUrl });
 
   app.use(express.static(PUBLIC_DIR));
   app.get(/^\/(?!api\/).*/, (_req, res) => {

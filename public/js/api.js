@@ -42,6 +42,7 @@ export async function obtainToken() {
 
     const res = await fetchWithTimeout(`${SERVER_URL}/api/auth`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(reqBody),
     });
@@ -56,21 +57,14 @@ export async function obtainToken() {
       throw buildAuthError(res, message);
     }
 
-    const data = await res.json();
+    const data = await res.json().catch(() => null);
 
-    if (!data?.token) {
-      throw new Error('invalid auth response');
-    }
-
-    state.myToken = data.token;
-    safeSetItem('chatToken', state.myToken);
-
-    if (data.username && (!state.myName || state.myName !== data.username)) {
+    if (data?.username && (!state.myName || state.myName !== data.username)) {
       state.myName = data.username;
       safeSetItem('chat_username', state.myName);
     }
 
-    return state.myToken;
+    return true;
   })();
 
   try {
@@ -81,13 +75,12 @@ export async function obtainToken() {
 }
 
 export async function fetchWithAuth(url, opts = {}, retry = true) {
-  const headers = { ...(opts.headers || {}) };
+  const requestOptions = {
+    ...opts,
+    credentials: 'include',
+    headers: { ...(opts.headers || {}) },
+  };
 
-  if (state.myToken) {
-    headers.Authorization = `Bearer ${state.myToken}`;
-  }
-
-  const requestOptions = { ...opts, headers };
   const res = await fetchWithTimeout(url, requestOptions);
 
   if ((res.status === 401 || res.status === 403) && retry) {
@@ -109,7 +102,7 @@ export async function fetchWithAuth(url, opts = {}, retry = true) {
         return res;
       }
 
-      return await fetchWithAuth(url, { ...opts, headers: { ...headers, Authorization: `Bearer ${refreshedToken}` } }, false);
+      return await fetchWithAuth(url, { ...opts }, false);
     }
   }
 

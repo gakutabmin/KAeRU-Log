@@ -43,21 +43,3 @@ export function safeSetItem(key, value) {
   memoryStore.set(key, stringValue);
   return true;
 }
-
-export function safeRemoveItem(key) {
-  if (typeof key !== 'string' || !key) {
-    return false;
-  }
-
-  try {
-    if (hasLocalStorage()) {
-      globalThis.localStorage.removeItem(key);
-      return true;
-    }
-  } catch {
-    // fall through to memory store
-  }
-
-  memoryStore.delete(key);
-  return true;
-}
