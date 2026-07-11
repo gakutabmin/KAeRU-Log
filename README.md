@@ -42,9 +42,7 @@ export HTTPS=false
 - `ADMIN_PASS`: 管理者ログイン用パスワード
 - `PORT`: HTTP サーバーの待受ポート。既定は `3000`
 - `TRUST_PROXY`: プロキシ配下で `req.ip` を信頼する場合は `true`
-- `HTTPS`: `true` のとき Cookie の `Secure` 属性と HSTS を有効化します。文字列として厳密に `true` の場合のみ有効です。
-
-- IP アドレスはレート制限やスパム対策のキー生成前にハッシュ化され、Redis に生値は保存しません。
+- `HTTPS`: Cookie の `Secure` 属性と HSTS を有効化する場合は `true`
 
 ## 起動
 
